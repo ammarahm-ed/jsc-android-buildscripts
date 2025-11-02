@@ -50,6 +50,18 @@ JSC_PATCHSET=(
 
   # Avoid ICU formatting dependencies when validating time zones
   "jsc_android_timezone_validate.patch"
+
+  # Force Android builds to use C++20 and drop toolchain -O3 defaults
+  "jsc_android_release_flags.patch"
+
+  # Avoid pthread_getname_np usage on Android where it's unavailable
+  "jsc_android_thread_name_guard.patch"
+
+  # Use posix_memalign when aligned_alloc is missing on older Android
+  "jsc_android_systemheap_posix_memalign.patch"
+
+  # Use legacy system property getter on older Android
+  "jsc_android_logging_property.patch"
 )
 
 ######################################################################################

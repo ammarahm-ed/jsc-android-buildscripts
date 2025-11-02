@@ -16,6 +16,21 @@ if [[ -z "$ANDROID_NDK" || ! -d "$ANDROID_NDK" ]]; then
   export ANDROID_NDK="$DEFAULT_ANDROID_NDK"
 fi
 
+if [[ -z "$JAVA_HOME" || ! -x "$JAVA_HOME/bin/java" ]]; then
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    if command -v brew >/dev/null 2>&1; then
+      HOMEBREW_JAVA_ROOT="$(brew --prefix openjdk@17 2>/dev/null)/libexec/openjdk.jdk/Contents/Home"
+      if [[ -x "$HOMEBREW_JAVA_ROOT/bin/java" ]]; then
+        export JAVA_HOME="$HOMEBREW_JAVA_ROOT"
+      fi
+    fi
+  fi
+fi
+
+if [[ -n "$JAVA_HOME" && -x "$JAVA_HOME/bin/java" ]]; then
+  export PATH="$JAVA_HOME/bin:$PATH"
+fi
+
 source $ROOTDIR/scripts/env.sh
 source $ROOTDIR/scripts/info.sh
 export JSC_VERSION=${npm_package_version}
