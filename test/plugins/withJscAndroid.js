@@ -1,6 +1,7 @@
 const assert = require('assert');
 const {
   withAppBuildGradle,
+  withGradleProperties,
   withProjectBuildGradle,
 } = require('expo/config-plugins');
 
@@ -47,6 +48,7 @@ afterEvaluate {
 `;
       config.modResults.contents += code;
     }
+
     return config;
   });
 };
@@ -73,6 +75,34 @@ const withJscAndroidProjectBuildGradle = (config) => {
 const withJscAndroid = (config) => {
   config = withJscAndroidAppBuildGradle(config);
   config = withJscAndroidProjectBuildGradle(config);
+  config = withGradleProperties(config, (config) => {
+    const propertyName = 'reactNativeArchitectures';
+    const desiredValue = 'arm64-v8a';
+    const existingProp = config.modResults.find(
+      (item) => item.type === 'property' && item.key === propertyName
+    );
+    const cleanValue = (value) => {
+      if (!value) return desiredValue;
+      const archs = value
+        .split(',')
+        .map((arch) => arch.trim())
+        .filter(Boolean);
+      if (!archs.length) return desiredValue;
+      const result = archs.filter((arch) => arch !== 'armeabi-v7a');
+      if (!result.length) return desiredValue;
+      return Array.from(new Set(result)).join(',');
+    };
+    if (existingProp) {
+      existingProp.value = cleanValue(existingProp.value);
+    } else {
+      config.modResults.push({
+        type: 'property',
+        key: propertyName,
+        value: desiredValue,
+      });
+    }
+    return config;
+  });
   return config;
 };
 
