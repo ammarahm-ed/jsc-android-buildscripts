@@ -48,12 +48,30 @@ patchAndMakeICU() {
   mkdir -p $TARGETDIR/icu/host
   cd $TARGETDIR/icu/host
 
+  local HAS_CLANG=0
+  if command -v clang >/dev/null 2>&1 && command -v clang++ >/dev/null 2>&1; then
+    HAS_CLANG=1
+  fi
+
   if [[ "$BUILD_TYPE" = "Release" ]]
   then
-    local OPT_FLAGS="-O2 -flto=thin -Wno-pass-failed=loop-vectorize"
+    local LTO_FLAG
+    local EXTRA_FLAGS=""
+    if [[ $HAS_CLANG -eq 1 ]]; then
+      LTO_FLAG="-flto=thin"
+      EXTRA_FLAGS="-Wno-pass-failed=loop-vectorize"
+    else
+      LTO_FLAG="-flto"
+    fi
+
+    local OPT_FLAGS="-O2 $LTO_FLAG"
+    if [[ -n "$EXTRA_FLAGS" ]]; then
+      OPT_FLAGS="$OPT_FLAGS $EXTRA_FLAGS"
+    fi
+
     CFLAGS="$OPT_FLAGS"
     CXXFLAGS="-std=c++20 $OPT_FLAGS"
-    LDFLAGS="-flto=thin"
+    LDFLAGS="$LTO_FLAG"
   else
     CFLAGS="-g2"
     CXXFLAGS="-std=c++20"
@@ -64,6 +82,9 @@ patchAndMakeICU() {
   local CONFIG_ENV=(env "CFLAGS=$CFLAGS" "CXXFLAGS=$CXXFLAGS")
   if [[ -n "$LDFLAGS" ]]; then
     CONFIG_ENV+=("LDFLAGS=$LDFLAGS")
+  fi
+  if [[ $HAS_CLANG -eq 1 ]]; then
+    CONFIG_ENV+=("CC=clang" "CXX=clang++")
   fi
 
   if [[ -f "$ICU_FILTER_FILE" ]]; then
