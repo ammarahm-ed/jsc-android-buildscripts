@@ -76,8 +76,10 @@ const withJscAndroid = (config) => {
   config = withJscAndroidAppBuildGradle(config);
   config = withJscAndroidProjectBuildGradle(config);
   config = withGradleProperties(config, (config) => {
+    const DEFAULT_ARCHS = ['arm64-v8a', 'x86_64'];
+    const ARCHS_TO_REMOVE = new Set(['armeabi-v7a', 'x86']);
     const propertyName = 'reactNativeArchitectures';
-    const desiredValue = 'arm64-v8a';
+    const desiredValue = DEFAULT_ARCHS.join(',');
     const existingProp = config.modResults.find(
       (item) => item.type === 'property' && item.key === propertyName
     );
@@ -88,9 +90,14 @@ const withJscAndroid = (config) => {
         .map((arch) => arch.trim())
         .filter(Boolean);
       if (!archs.length) return desiredValue;
-      const result = archs.filter((arch) => arch !== 'armeabi-v7a');
+      const result = [];
+      archs.forEach((arch) => {
+        if (!ARCHS_TO_REMOVE.has(arch) && !result.includes(arch)) {
+          result.push(arch);
+        }
+      });
       if (!result.length) return desiredValue;
-      return Array.from(new Set(result)).join(',');
+      return result.join(',');
     };
     if (existingProp) {
       existingProp.value = cleanValue(existingProp.value);
