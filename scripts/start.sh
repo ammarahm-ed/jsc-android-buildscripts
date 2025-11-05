@@ -104,7 +104,13 @@ patchAndMakeICU() {
     CONFIG_ENV+=("LDFLAGS=$LDFLAGS")
   fi
   if [[ $HAS_CLANG -eq 1 ]]; then
-    CONFIG_ENV+=("CC=clang" "CXX=clang++")
+    local cc_cmd="clang"
+    local cxx_cmd="clang++"
+    if [[ -n "$JSC_CCACHE_BIN" ]]; then
+      cc_cmd="$JSC_CCACHE_BIN clang"
+      cxx_cmd="$JSC_CCACHE_BIN clang++"
+    fi
+    CONFIG_ENV+=("CC=$cc_cmd" "CXX=$cxx_cmd")
   fi
 
   if [[ -f "$ICU_FILTER_FILE" ]]; then

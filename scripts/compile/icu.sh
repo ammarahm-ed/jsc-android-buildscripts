@@ -35,6 +35,13 @@ else
     CONFIGURE_PREFIX=()
 fi
 
+CC_BIN=$CROSS_COMPILE_PLATFORM_CC-clang
+CXX_BIN=$CROSS_COMPILE_PLATFORM_CC-clang++
+if [[ -n "$JSC_CCACHE_BIN" ]]; then
+    CC_BIN="$JSC_CCACHE_BIN $CC_BIN"
+    CXX_BIN="$JSC_CCACHE_BIN $CXX_BIN"
+fi
+
 "${CONFIGURE_PREFIX[@]}" $TARGETDIR/icu/source/configure --prefix=${INSTALL_DIR} \
     $BUILD_TYPE_CONFIG \
     --host=$CROSS_COMPILE_PLATFORM \
@@ -52,8 +59,8 @@ fi
     CFLAGS="$ICU_CFLAGS" \
     CXXFLAGS="$ICU_CXXFLAGS" \
     LDFLAGS="$ICU_LDFLAGS" \
-    CC=$CROSS_COMPILE_PLATFORM_CC-clang \
-    CXX=$CROSS_COMPILE_PLATFORM_CC-clang++ \
+    CC="$CC_BIN" \
+    CXX="$CXX_BIN" \
     AR=$TOOLCHAIN_DIR/bin/llvm-ar \
     LD=$TOOLCHAIN_DIR/bin/ld \
     RANLIB=$TOOLCHAIN_DIR/bin/llvm-ranlib \

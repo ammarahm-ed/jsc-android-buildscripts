@@ -21,7 +21,7 @@ commander
   .option('--dry-run', 'Dry run mode for npm publish')
   .parse(process.argv);
 
-const artifactZipFile = verifyFile(commander.args[0], '<artifact_zip_file>');
+const artifactInput = resolveArtifactPath(commander.args[0], '<artifact_path>');
 const rootDir = path.dirname(__dirname);
 const pkgJsonPath = path.join(rootDir, 'package.json');
 const packageTemplate = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
@@ -33,7 +33,11 @@ if (fs.existsSync(workDir)) {
 }
 fs.mkdirSync(workDir, {recursive: true});
 
-child_process.execFileSync('unzip', [artifactZipFile, '-d', workDir]);
+if (artifactInput.isDirectory) {
+  fs.cpSync(artifactInput.path, workDir, {recursive: true});
+} else {
+  child_process.execFileSync('unzip', [artifactInput.path, '-d', workDir]);
+}
 
 const variantList = Array.isArray(packageTemplate.config?.ndkVariants)
   ? packageTemplate.config.ndkVariants
@@ -111,26 +115,27 @@ function copyDir(source, destination) {
   fs.cpSync(source, destination, {recursive: true, force: true});
 }
 
-function verifyFile(filePath, argName) {
-  if (filePath == null) {
+function resolveArtifactPath(inputPath, argName) {
+  if (inputPath == null) {
     console.error(`Error: ${argName} is required`);
     process.exit(1);
   }
 
+  const resolvedPath = path.resolve(process.cwd(), inputPath);
   let stat;
   try {
-    stat = fs.lstatSync(filePath);
+    stat = fs.lstatSync(resolvedPath);
   } catch (error) {
     console.error(error.toString());
     process.exit(1);
   }
 
-  if (!stat.isFile()) {
-    console.error(`Error: ${argName} is not a regular file`);
+  if (!stat.isDirectory() && !stat.isFile()) {
+    console.error(`Error: ${argName} must be a directory or zip file`);
     process.exit(1);
   }
 
-  return filePath;
+  return {path: resolvedPath, isDirectory: stat.isDirectory()};
 }
 
 function createPatchedContext(rootDir, options, wrappedRunner) {
@@ -150,6 +155,9 @@ function createPatchedContext(rootDir, options, wrappedRunner) {
       }
       if (variant.npmPackage) {
         patchedConfig.config.selectedNdkPackage = variant.npmPackage;
+      }
+      if (variant.distDir) {
+        patchedConfig.config.selectedNdkDistDir = variant.distDir;
       }
     }
     if (versionSuffix) {

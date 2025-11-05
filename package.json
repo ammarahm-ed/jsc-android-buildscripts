@@ -20,7 +20,7 @@
     "/dist"
   ],
   "scripts": {
-    "clean": "rm -rf dist; rm -rf build",
+    "clean": "rm -rf dist dist.unstripped dist-ndk* dist-ndk*.unstripped; rm -rf build",
     "info": "./scripts/info.sh",
     "download": "./scripts/download.sh",
     "start": "./scripts/start.sh"
