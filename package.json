@@ -27,7 +27,7 @@
   },
   "config": {
     "bunWebKitRepo": "https://github.com/oven-sh/WebKit.git",
-    "bunWebKitCommit": "6d0f3aac0b817cc01a846b3754b21271adedac12",
+    "bunWebKitCommit": "26e6460697dab3e8681489ce67857434b2180e6f",
     "icuRelease": "release-74-2",
     "icuArchive": "icu4c-74_2-src.tgz"
   },
