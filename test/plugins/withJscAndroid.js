@@ -5,6 +5,10 @@ const {
   withProjectBuildGradle,
 } = require('expo/config-plugins');
 
+const DEFAULT_RELATIVE_DIST_PATH = '../../dist-ndk28';
+const GRADLE_DIST_PATH =
+  process.env.JSC_GRADLE_DIST_PATH || DEFAULT_RELATIVE_DIST_PATH;
+
 const withJscAndroidAppBuildGradle = (config) => {
   return withAppBuildGradle(config, (config) => {
     assert(config.modResults.language === 'groovy');
@@ -25,7 +29,7 @@ afterEvaluate {
     repositories {
       maven {
         // Local dist maven repo
-        url("\${rootDir}/../../dist")
+        url("\${rootDir}/${GRADLE_DIST_PATH}")
       }
 
       mavenCentral {

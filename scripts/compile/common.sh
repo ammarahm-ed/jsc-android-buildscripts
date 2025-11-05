@@ -26,6 +26,7 @@ process_switch_options() {
 }
 
 if ! [[ $ROOTDIR ]]; then ROOTDIR=`pwd`; fi
+source $ROOTDIR/scripts/toolchain.sh
 ARCH=$JSC_ARCH
 
 TARGETDIR=$ROOTDIR/build/target
@@ -101,8 +102,16 @@ DEBUG_SYMBOL_LEVEL="-g2"
 if [[ "$BUILD_TYPE" = "Release" ]]
 then
     FRAME_POINTER_FLAG="-fomit-frame-pointer"
-    CFLAGS_BUILD_TYPE="-DNDEBUG -g0 -O2 -flto=thin"
-    ICU_CFLAGS_BUILD_TYPE="-O2 -flto=thin"
+    CFLAGS_BUILD_TYPE="-DNDEBUG -g0 -O2"
+    ICU_CFLAGS_BUILD_TYPE="-O2"
+    if [[ -n "$JSC_TOOLCHAIN_LTO_FLAG" ]]; then
+        CFLAGS_BUILD_TYPE="$CFLAGS_BUILD_TYPE $JSC_TOOLCHAIN_LTO_FLAG"
+        ICU_CFLAGS_BUILD_TYPE="$ICU_CFLAGS_BUILD_TYPE $JSC_TOOLCHAIN_LTO_FLAG"
+    fi
+    if [[ -n "$JSC_TOOLCHAIN_RELEASE_CFLAGS" ]]; then
+        CFLAGS_BUILD_TYPE="$CFLAGS_BUILD_TYPE $JSC_TOOLCHAIN_RELEASE_CFLAGS"
+        ICU_CFLAGS_BUILD_TYPE="$ICU_CFLAGS_BUILD_TYPE $JSC_TOOLCHAIN_RELEASE_CFLAGS"
+    fi
 else
     FRAME_POINTER_FLAG="-fno-omit-frame-pointer"
     CFLAGS_BUILD_TYPE=""
@@ -117,8 +126,11 @@ COMMON_LDFLAGS=" \
 -Wl,--exclude-libs,libgcc.a \
 -Wl,--no-undefined \
 -Wl,-z,max-page-size=16384 \
--flto=thin \
 "
+
+if [[ "$BUILD_TYPE" = "Release" && -n "$JSC_TOOLCHAIN_RELEASE_LDFLAGS" ]]; then
+    COMMON_LDFLAGS="$COMMON_LDFLAGS $JSC_TOOLCHAIN_RELEASE_LDFLAGS"
+fi
 
 COMMON_CFLAGS=" \
 -fstack-protector \
@@ -132,7 +144,6 @@ $FRAME_POINTER_FLAG \
 -DCUSTOMIZE_REACT_NATIVE \
 $SWITCH_COMMON_CFLAGS_INTL \
 $CFLAGS_BUILD_TYPE \
--Wno-pass-failed=loop-vectorize \
 -D__ANDROID_MIN_SDK_VERSION__=${ANDROID_API} \
 "
 

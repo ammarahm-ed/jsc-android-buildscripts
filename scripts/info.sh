@@ -5,6 +5,10 @@ ROOTDIR=$PWD
 WEBKIT_REPO="${npm_package_config_bunWebKitRepo:-https://github.com/oven-sh/WebKit.git}"
 WEBKIT_COMMIT="${npm_package_config_bunWebKitCommit}"
 
+export JSC_TOOLCHAIN_SUPPRESS_LOG=1
+source $ROOTDIR/scripts/toolchain.sh
+unset JSC_TOOLCHAIN_SUPPRESS_LOG
+
 export REVISION=$(node -e "console.log(require('./package.json').version.split('.')[0])")
 CONFIG=$(node -e "console.log(JSON.stringify(require('$ROOTDIR/package.json').config, null, 2))")
 
@@ -27,5 +31,11 @@ printf "\n\n\n\n\n\t\t\tRevision: \x1B[32m$REVISION\x1B[0m\n\n\n"
 printf "WebKit repository:\n%s @ %s\n\n" "$WEBKIT_REPO" "${WEBKIT_COMMIT:-unknown}"
 printf "Upstream URL:\n%s\n\n" "$WEBKIT_URL"
 printf "Config:\n%s\n\n" "$CONFIG"
+printf "NDK variant: %s\n" "${JSC_TOOLCHAIN_VARIANT:-unknown}"
+if [[ -n "$JSC_TOOLCHAIN_NDK_REVISION" ]]; then
+  printf "NDK revision: %s\n\n" "$JSC_TOOLCHAIN_NDK_REVISION"
+else
+  printf "\n"
+fi
 printf "AppleWebKit version components:\n%s\n\n" "$APPLE_VERSION"
 printf "Size:\n$SIZE\n\n"

@@ -16,6 +16,10 @@ if [[ -z "$ANDROID_NDK" || ! -d "$ANDROID_NDK" ]]; then
   export ANDROID_NDK="$DEFAULT_ANDROID_NDK"
 fi
 
+export JSC_TOOLCHAIN_SUPPRESS_LOG=1
+source $ROOTDIR/scripts/toolchain.sh
+unset JSC_TOOLCHAIN_SUPPRESS_LOG
+
 if [[ -z "$JAVA_HOME" || ! -x "$JAVA_HOME/bin/java" ]]; then
   if [[ "$(uname -s)" == "Darwin" ]]; then
     if command -v brew >/dev/null 2>&1; then
@@ -37,6 +41,17 @@ export JSC_VERSION=${npm_package_version}
 export BUILD_TYPE=Release
 # export BUILD_TYPE=Debug
 
+STRIPPED_DIST_DIR=${JSC_DIST_DIR:-${ROOTDIR}/dist-ndk28}
+UNSTRIPPED_DIST_DIR=${JSC_DIST_UNSTRIPPED_DIR:-${ROOTDIR}/dist-ndk28.unstripped}
+
+printf "Building with Android NDK variant: %s\n" "${JSC_TOOLCHAIN_VARIANT}"
+if [[ -n "$JSC_TOOLCHAIN_NDK_REVISION" ]]; then
+  printf "Detected Android NDK revision: %s\n" "${JSC_TOOLCHAIN_NDK_REVISION}"
+fi
+printf "Using distribution directories:\n"
+printf "  stripped   : %s\n" "$STRIPPED_DIST_DIR"
+printf "  unstripped : %s\n" "$UNSTRIPPED_DIST_DIR"
+
 SCRIPT_DIR=$(cd `dirname $0`; pwd)
 
 patchAndMakeICU() {
@@ -55,23 +70,28 @@ patchAndMakeICU() {
 
   if [[ "$BUILD_TYPE" = "Release" ]]
   then
-    local LTO_FLAG
-    local EXTRA_FLAGS=""
+    local opt_flags="-O2"
+    local lto_flag=""
     if [[ $HAS_CLANG -eq 1 ]]; then
-      LTO_FLAG="-flto=thin"
-      EXTRA_FLAGS="-Wno-pass-failed=loop-vectorize"
-    else
-      LTO_FLAG="-flto"
+      lto_flag="$JSC_TOOLCHAIN_LTO_FLAG"
+    elif [[ -n "$JSC_TOOLCHAIN_LTO_FLAG" ]]; then
+      lto_flag="-flto"
+    fi
+    if [[ -n "$lto_flag" ]]; then
+      opt_flags="$opt_flags $lto_flag"
+    fi
+    if [[ -n "$JSC_TOOLCHAIN_RELEASE_CFLAGS" ]]; then
+      opt_flags="$opt_flags $JSC_TOOLCHAIN_RELEASE_CFLAGS"
     fi
 
-    local OPT_FLAGS="-O2 $LTO_FLAG"
-    if [[ -n "$EXTRA_FLAGS" ]]; then
-      OPT_FLAGS="$OPT_FLAGS $EXTRA_FLAGS"
-    fi
+    CFLAGS="$opt_flags"
+    CXXFLAGS="-std=c++20 $opt_flags"
 
-    CFLAGS="$OPT_FLAGS"
-    CXXFLAGS="-std=c++20 $OPT_FLAGS"
-    LDFLAGS="$LTO_FLAG"
+    local ldflags="$JSC_TOOLCHAIN_RELEASE_LDFLAGS"
+    if [[ $HAS_CLANG -eq 0 && "$ldflags" == "-flto=thin" ]]; then
+      ldflags="-flto"
+    fi
+    LDFLAGS="$ldflags"
   else
     CFLAGS="-g2"
     CXXFLAGS="-std=c++20"
@@ -180,14 +200,14 @@ if [[ "${SKIP_INTL}" != "1" ]]; then
 fi
 
 printf "\n\n\t\t===================== create stripped distributions =====================\n\n"
-export DISTDIR=${ROOTDIR}/dist
+export DISTDIR=${STRIPPED_DIST_DIR}
 copyHeaders ${DISTDIR}
 createAAR "jsc-android" ${DISTDIR} ${INSTALL_DIR_I18N_false} "false"
 createAAR "jsc-android" ${DISTDIR} ${INSTALL_DIR_I18N_true} "true"
 createAAR "cppruntime" ${DISTDIR} ${INSTALL_CPPRUNTIME_DIR} "false"
 
 printf "\n\n\t\t===================== create unstripped distributions =====================\n\n"
-export DISTDIR=${ROOTDIR}/dist.unstripped
+export DISTDIR=${UNSTRIPPED_DIST_DIR}
 copyHeaders ${DISTDIR}
 createAAR "jsc-android" ${DISTDIR} ${INSTALL_UNSTRIPPED_DIR_I18N_false} "false"
 createAAR "jsc-android" ${DISTDIR} ${INSTALL_UNSTRIPPED_DIR_I18N_true} "true"
