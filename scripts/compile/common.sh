@@ -29,7 +29,9 @@ if ! [[ $ROOTDIR ]]; then ROOTDIR=`pwd`; fi
 source $ROOTDIR/scripts/toolchain.sh
 ARCH=$JSC_ARCH
 
-TARGETDIR=$ROOTDIR/build/target
+if [[ -z "$TARGETDIR" ]]; then
+  TARGETDIR=$ROOTDIR/build/target
+fi
 
 # platform specific settings
 CROSS_COMPILE_PLATFORM_arm="arm-linux-androideabi"
@@ -54,7 +56,8 @@ PLATFORM_CFLAGS_arm=""
 PLATFORM_LDFLAGS_arm=""
 JNI_ARCH_arm=armeabi-v7a
 
-PLATFORM_CFLAGS_arm64="-mtune=cortex-a77"
+# Optimize for Snapdragon XR2 Gen 2 class hardware: require ARMv8.2 and tune for Cortex-X3.
+PLATFORM_CFLAGS_arm64="-march=armv8.2-a -mtune=cortex-x3"
 PLATFORM_LDFLAGS_arm64=""
 JNI_ARCH_arm64=arm64-v8a
 
@@ -148,7 +151,7 @@ $CFLAGS_BUILD_TYPE \
 "
 
 COMMON_CXXFLAGS=" \
--std=c++20 \
+-std=c++${JSC_TOOLCHAIN_CXX_STANDARD:-23} \
 "
 
 ICU_CFLAGS="$COMMON_CFLAGS $PLATFORM_CFLAGS $ICU_CFLAGS_BUILD_TYPE"

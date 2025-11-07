@@ -155,6 +155,10 @@ if [[ -n "$JSC_TOOLCHAIN_VARIANT_DIST_UNSTRIPPED_DIR" && -z "$JSC_DIST_UNSTRIPPE
   fi
 fi
 
+if [[ -z "$JSC_TOOLCHAIN_CXX_STANDARD" ]]; then
+  export JSC_TOOLCHAIN_CXX_STANDARD=23
+fi
+
 if [[ -z "$JSC_CCACHE_BIN" && "${JSC_TOOLCHAIN_DISABLE_CCACHE:-0}" != "1" ]]; then
   if command -v ccache >/dev/null 2>&1; then
     export JSC_CCACHE_BIN=$(command -v ccache)
@@ -175,7 +179,7 @@ fi
 if [[ "${JSC_TOOLCHAIN_VARIANT_DISABLE_LOOP_VECTORIZATION:-0}" == "1" ]]; then
   export JSC_TOOLCHAIN_RELEASE_CFLAGS="-fno-vectorize -fno-slp-vectorize"
 else
-  export JSC_TOOLCHAIN_RELEASE_CFLAGS="-Wno-pass-failed=loop-vectorize"
+  export JSC_TOOLCHAIN_RELEASE_CFLAGS="-Wno-pass-failed"
 fi
 
 if [[ -n "$JSC_TOOLCHAIN_LTO_FLAG" ]]; then

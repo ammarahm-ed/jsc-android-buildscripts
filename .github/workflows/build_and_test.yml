@@ -27,6 +27,7 @@ jobs:
       ORG_GRADLE_PROJECT_signingPassword: ${{ secrets.GPG_SIGNING_PASSWORD }}
       NDK_VERSION_27: '27.1.12297006'
       NDK_VERSION_28: '28.2.13676358'
+      NDK_VERSION_29: '29.0.14206865'
       BUILD_CACHE_VERSION: v1
 
     steps:
@@ -85,9 +86,9 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.cache/ccache
-        key: ccache-${{ env.BUILD_CACHE_VERSION }}-${{ runner.os }}-${{ env.NDK_VERSION_27 }}-${{ steps.build-hash.outputs.hash }}
+        key: ccache-${{ env.BUILD_CACHE_VERSION }}-${{ runner.os }}-${{ env.NDK_VERSION_27 }}-${{ env.NDK_VERSION_28 }}-${{ env.NDK_VERSION_29 }}-${{ steps.build-hash.outputs.hash }}
         restore-keys: |
-          ccache-${{ env.BUILD_CACHE_VERSION }}-${{ runner.os }}-${{ env.NDK_VERSION_27 }}-
+          ccache-${{ env.BUILD_CACHE_VERSION }}-${{ runner.os }}-${{ env.NDK_VERSION_27 }}-${{ env.NDK_VERSION_28 }}-${{ env.NDK_VERSION_29 }}-
 
     - name: Configure ccache
       run: |
@@ -105,18 +106,37 @@ jobs:
         path: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION_27 }}
         key: android-ndk-${{ runner.os }}-${{ env.NDK_VERSION_27 }}
 
+    - name: Cache Android NDK r28
+      id: cache-ndk-28
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION_28 }}
+        key: android-ndk-${{ runner.os }}-${{ env.NDK_VERSION_28 }}
+
+    - name: Cache Android NDK r29
+      id: cache-ndk-29
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION_29 }}
+        key: android-ndk-${{ runner.os }}-${{ env.NDK_VERSION_29 }}
+
     - name: Install Android packages
       run: |
         export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
         yes | sdkmanager --licenses || true
         sdkmanager "cmake;3.22.1"
-        if [[ ! -d "${ANDROID_HOME}/ndk/${NDK_VERSION_27}" ]]; then
-          sdkmanager "ndk;${NDK_VERSION_27}"
-        fi
-        UNICODE_DIR="${ANDROID_HOME}/ndk/${NDK_VERSION_27}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/unicode"
-        if [[ -d "${UNICODE_DIR}" ]]; then
-          mv "${UNICODE_DIR}" "${UNICODE_DIR}2"
-        fi
+        for version in "${NDK_VERSION_27}" "${NDK_VERSION_28}" "${NDK_VERSION_29}"; do
+          if [[ -z "$version" ]]; then
+            continue
+          fi
+          if [[ ! -d "${ANDROID_HOME}/ndk/${version}" ]]; then
+            sdkmanager "ndk;${version}"
+          fi
+          UNICODE_DIR="${ANDROID_HOME}/ndk/${version}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/unicode"
+          if [[ -d "${UNICODE_DIR}" ]]; then
+            mv "${UNICODE_DIR}" "${UNICODE_DIR}2"
+          fi
+        done
         echo "ANDROID_NDK=$ANDROID_HOME/ndk/${NDK_VERSION_27}" >> $GITHUB_ENV
         echo "PATH=$PATH" >> $GITHUB_ENV
       shell: bash
@@ -138,7 +158,32 @@ jobs:
 
     - name: Build
       if: steps.cache-dist.outputs.cache-hit != 'true'
-      run: yarn start
+      run: |
+        variants=(ndk27 ndk28c ndk29)
+        for variant in "${variants[@]}"; do
+          case "$variant" in
+            ndk27)
+              export ANDROID_NDK="$ANDROID_HOME/ndk/${NDK_VERSION_27}"
+              ;;
+            ndk28c)
+              export ANDROID_NDK="$ANDROID_HOME/ndk/${NDK_VERSION_28}"
+              ;;
+            ndk29)
+              export ANDROID_NDK="$ANDROID_HOME/ndk/${NDK_VERSION_29}"
+              ;;
+            *)
+              echo "Unknown variant $variant" >&2
+              exit 1
+          esac
+
+          if [[ ! -d "$ANDROID_NDK" ]]; then
+            echo "Android NDK not found at $ANDROID_NDK for variant $variant" >&2
+            exit 1
+          fi
+
+          export JSC_NDK_VARIANT="$variant"
+          yarn start
+        done
       shell: bash
 
     - name: Show ccache stats
@@ -241,6 +286,16 @@ jobs:
           set +e
           maestro test maestro.yaml
           STATUS=$?
+          if [ $STATUS -eq 0 ]; then
+            for variant in ndk27 ndk28c ndk29; do
+              ../scripts/run-js-smoketest.sh "$variant"
+              EXIT_CODE=$?
+              if [ $EXIT_CODE -ne 0 ]; then
+                STATUS=$EXIT_CODE
+                break
+              fi
+            done
+          fi
           adb logcat -d > adb.log
           exit $STATUS
 

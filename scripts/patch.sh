@@ -51,7 +51,7 @@ JSC_PATCHSET=(
   # Avoid ICU formatting dependencies when validating time zones
   "jsc_android_timezone_validate.patch"
 
-  # Force Android builds to use C++20 and drop toolchain -O3 defaults
+  # Force Android builds to use C++23 and drop toolchain -O3 defaults
   "jsc_android_release_flags.patch"
 
   # Avoid pthread_getname_np usage on Android where it's unavailable
@@ -62,6 +62,15 @@ JSC_PATCHSET=(
 
   # Use legacy system property getter on older Android
   "jsc_android_logging_property.patch"
+
+  # Provide a safe fallback for localeCompare when ICU collators are unavailable
+  "jsc_android_locale_fallback.patch"
+
+  # Enable SharedArrayBuffer at runtime
+  "jsc_android_enable_sab.patch"
+
+  # Ensure Android logging macros are available when Bun additions are enabled
+  "jsc_android_assertions_android_log.patch"
 )
 
 ######################################################################################

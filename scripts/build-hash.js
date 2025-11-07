@@ -11,6 +11,7 @@ const includePaths = [
   'yarn.lock',
   'patches',
   'scripts',
+  'tools',
   'lib',
 ];
 

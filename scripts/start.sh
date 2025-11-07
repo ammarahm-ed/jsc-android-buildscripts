@@ -1,7 +1,7 @@
 #!/bin/bash -e
 
-export ANDROID_API_FOR_ABI_32=24
-export ANDROID_API_FOR_ABI_64=24
+export ANDROID_API_FOR_ABI_32=29
+export ANDROID_API_FOR_ABI_64=29
 export ANDROID_TARGET_API=35
 export ROOTDIR=$PWD
 
@@ -19,6 +19,10 @@ fi
 export JSC_TOOLCHAIN_SUPPRESS_LOG=1
 source $ROOTDIR/scripts/toolchain.sh
 unset JSC_TOOLCHAIN_SUPPRESS_LOG
+
+if [[ -z "$JSC_NDK_VARIANT" && -n "$JSC_TOOLCHAIN_VARIANT" ]]; then
+  export JSC_NDK_VARIANT="$JSC_TOOLCHAIN_VARIANT"
+fi
 
 if [[ -z "$JAVA_HOME" || ! -x "$JAVA_HOME/bin/java" ]]; then
   if [[ "$(uname -s)" == "Darwin" ]]; then
@@ -85,7 +89,7 @@ patchAndMakeICU() {
     fi
 
     CFLAGS="$opt_flags"
-    CXXFLAGS="-std=c++20 $opt_flags"
+    CXXFLAGS="-std=c++${JSC_TOOLCHAIN_CXX_STANDARD:-23} $opt_flags"
 
     local ldflags="$JSC_TOOLCHAIN_RELEASE_LDFLAGS"
     if [[ $HAS_CLANG -eq 0 && "$ldflags" == "-flto=thin" ]]; then
@@ -94,7 +98,7 @@ patchAndMakeICU() {
     LDFLAGS="$ldflags"
   else
     CFLAGS="-g2"
-    CXXFLAGS="-std=c++20"
+    CXXFLAGS="-std=c++${JSC_TOOLCHAIN_CXX_STANDARD:-23}"
     LDFLAGS=""
   fi
 
@@ -176,14 +180,24 @@ createAAR() {
   local i18n=$4
   local headersDir=${distDir}/include
   printf "\n\n\t\t===================== create aar :${target}: =====================\n\n"
-  cd $ROOTDIR/lib
-  ./gradlew clean :${target}:publish \
-      --project-prop distDir="${distDir}" \
-      --project-prop jniLibsDir="${jniLibsDir}" \
-      --project-prop headersDir="${headersDir}" \
-      --project-prop version="${npm_package_version}" \
-      --project-prop i18n="${i18n}"
-  cd $ROOTDIR
+  (
+    cd $ROOTDIR/lib
+    if [[ -n "$JAVA_HOME" && -x "$JAVA_HOME/bin/java" ]]; then
+      export JAVA_HOME
+      export PATH="$JAVA_HOME/bin:$PATH"
+    else
+      echo "Warning: JAVA_HOME not set or invalid when invoking Gradle" >&2
+    fi
+    if [[ -n "$JAVA_HOME" ]]; then
+      export GRADLE_OPTS="${GRADLE_OPTS} -Dorg.gradle.java.home=$JAVA_HOME"
+    fi
+    ./gradlew clean :${target}:publish \
+        --project-prop distDir="${distDir}" \
+        --project-prop jniLibsDir="${jniLibsDir}" \
+        --project-prop headersDir="${headersDir}" \
+        --project-prop version="${npm_package_version}" \
+        --project-prop i18n="${i18n}"
+  )
 }
 
 copyHeaders() {
@@ -218,6 +232,12 @@ copyHeaders ${DISTDIR}
 createAAR "jsc-android" ${DISTDIR} ${INSTALL_UNSTRIPPED_DIR_I18N_false} "false"
 createAAR "jsc-android" ${DISTDIR} ${INSTALL_UNSTRIPPED_DIR_I18N_true} "true"
 createAAR "cppruntime" ${DISTDIR} ${INSTALL_CPPRUNTIME_DIR} "false"
+
+printf "\n\n\t\t===================== build smoke test assets =====================\n\n"
+if ! "${ROOTDIR}/scripts/build-js-smoketest.sh"; then
+  echo "Failed to build smoke test assets for ${JSC_TOOLCHAIN_VARIANT}" >&2
+  exit 1
+fi
 
 npm run info
 
