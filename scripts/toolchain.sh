@@ -17,7 +17,7 @@ fi
 
 VARIANT_OVERRIDE="${JSC_NDK_VARIANT:-}"
 
-variant_output=$(node /dev/stdin "$ROOTDIR" "$VARIANT_OVERRIDE" "$SOURCE_PROPERTIES_PATH" <<'NODE'
+variant_output=$(node - "$ROOTDIR" "$VARIANT_OVERRIDE" "$SOURCE_PROPERTIES_PATH" <<'NODE'
 const fs = require('fs');
 const path = require('path');
 
