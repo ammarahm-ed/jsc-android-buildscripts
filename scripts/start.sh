@@ -84,7 +84,7 @@ patchAndMakeICU() {
     if [[ -n "$lto_flag" ]]; then
       opt_flags="$opt_flags $lto_flag"
     fi
-    if [[ -n "$JSC_TOOLCHAIN_RELEASE_CFLAGS" ]]; then
+    if [[ $HAS_CLANG -eq 1 && -n "$JSC_TOOLCHAIN_RELEASE_CFLAGS" ]]; then
       opt_flags="$opt_flags $JSC_TOOLCHAIN_RELEASE_CFLAGS"
     fi
 
