@@ -1,5 +1,4 @@
 diff --git a/webkit/Source/WTF/wtf/Assertions.h b/webkit/Source/WTF/wtf/Assertions.h
-index 0000000..0000000 100644
 --- a/webkit/Source/WTF/wtf/Assertions.h
 +++ b/webkit/Source/WTF/wtf/Assertions.h
 @@ -49,7 +49,7 @@
