@@ -27,7 +27,7 @@ jobs:
         include:
           - variant: ndk27
             ndk-version: '27.1.12297006'
-          - variant: ndk28c
+          - variant: ndk28
             ndk-version: '28.2.13676358'
           - variant: ndk29
             ndk-version: '29.0.14206865'
@@ -241,7 +241,7 @@ jobs:
           maestro test maestro.yaml
           STATUS=$?
           if [ $STATUS -eq 0 ]; then
-            for variant in ndk27 ndk28c ndk29; do
+            for variant in ndk27 ndk28 ndk29; do
               ../scripts/run-js-smoketest.sh "$variant"
               EXIT_CODE=$?
               if [ $EXIT_CODE -ne 0 ]; then
