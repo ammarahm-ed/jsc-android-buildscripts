@@ -22,12 +22,18 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - variant: ndk27
+            ndk-version: '27.1.12297006'
+          - variant: ndk28c
+            ndk-version: '28.2.13676358'
+          - variant: ndk29
+            ndk-version: '29.0.14206865'
     env:
       ORG_GRADLE_PROJECT_signingKey: ${{ secrets.GPG_SIGNING_KEY }}
       ORG_GRADLE_PROJECT_signingPassword: ${{ secrets.GPG_SIGNING_PASSWORD }}
-      NDK_VERSION_27: '27.1.12297006'
-      NDK_VERSION_28: '28.2.13676358'
-      NDK_VERSION_29: '29.0.14206865'
       BUILD_CACHE_VERSION: v1
 
     steps:
@@ -58,13 +64,9 @@ jobs:
       uses: actions/cache@v4
       with:
         path: |
-          dist-ndk27
-          dist-ndk27.unstripped
-          dist-ndk28
-          dist-ndk28.unstripped
-          dist-ndk29
-          dist-ndk29.unstripped
-        key: jsc-dist-${{ env.BUILD_CACHE_VERSION }}-${{ steps.build-hash.outputs.hash }}
+          dist-${{ matrix.variant }}
+          dist-${{ matrix.variant }}.unstripped
+        key: jsc-dist-${{ env.BUILD_CACHE_VERSION }}-${{ matrix.variant }}-${{ steps.build-hash.outputs.hash }}
 
     - name: Restore WebKit sources
       id: cache-download
@@ -86,9 +88,9 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.cache/ccache
-        key: ccache-${{ env.BUILD_CACHE_VERSION }}-${{ runner.os }}-${{ env.NDK_VERSION_27 }}-${{ env.NDK_VERSION_28 }}-${{ env.NDK_VERSION_29 }}-${{ steps.build-hash.outputs.hash }}
+        key: ccache-${{ env.BUILD_CACHE_VERSION }}-${{ runner.os }}-${{ matrix.variant }}-${{ matrix.ndk-version }}-${{ steps.build-hash.outputs.hash }}
         restore-keys: |
-          ccache-${{ env.BUILD_CACHE_VERSION }}-${{ runner.os }}-${{ env.NDK_VERSION_27 }}-${{ env.NDK_VERSION_28 }}-${{ env.NDK_VERSION_29 }}-
+          ccache-${{ env.BUILD_CACHE_VERSION }}-${{ runner.os }}-${{ matrix.variant }}-${{ matrix.ndk-version }}-
 
     - name: Configure ccache
       run: |
@@ -99,45 +101,26 @@ jobs:
         fi
       shell: bash
 
-    - name: Cache Android NDK r27
-      id: cache-ndk-27
+    - name: Cache Android NDK
+      id: cache-ndk
       uses: actions/cache@v4
       with:
-        path: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION_27 }}
-        key: android-ndk-${{ runner.os }}-${{ env.NDK_VERSION_27 }}
-
-    - name: Cache Android NDK r28
-      id: cache-ndk-28
-      uses: actions/cache@v4
-      with:
-        path: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION_28 }}
-        key: android-ndk-${{ runner.os }}-${{ env.NDK_VERSION_28 }}
-
-    - name: Cache Android NDK r29
-      id: cache-ndk-29
-      uses: actions/cache@v4
-      with:
-        path: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION_29 }}
-        key: android-ndk-${{ runner.os }}-${{ env.NDK_VERSION_29 }}
+        path: ${{ env.ANDROID_HOME }}/ndk/${{ matrix.ndk-version }}
+        key: android-ndk-${{ runner.os }}-${{ matrix.ndk-version }}
 
     - name: Install Android packages
       run: |
         export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
         yes | sdkmanager --licenses || true
         sdkmanager "cmake;3.22.1"
-        for version in "${NDK_VERSION_27}" "${NDK_VERSION_28}" "${NDK_VERSION_29}"; do
-          if [[ -z "$version" ]]; then
-            continue
-          fi
-          if [[ ! -d "${ANDROID_HOME}/ndk/${version}" ]]; then
-            sdkmanager "ndk;${version}"
-          fi
-          UNICODE_DIR="${ANDROID_HOME}/ndk/${version}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/unicode"
-          if [[ -d "${UNICODE_DIR}" ]]; then
-            mv "${UNICODE_DIR}" "${UNICODE_DIR}2"
-          fi
-        done
-        echo "ANDROID_NDK=$ANDROID_HOME/ndk/${NDK_VERSION_27}" >> $GITHUB_ENV
+        if [[ ! -d "${ANDROID_HOME}/ndk/${{ matrix.ndk-version }}" ]]; then
+          sdkmanager "ndk;${{ matrix.ndk-version }}"
+        fi
+        UNICODE_DIR="${ANDROID_HOME}/ndk/${{ matrix.ndk-version }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/unicode"
+        if [[ -d "${UNICODE_DIR}" ]]; then
+          mv "${UNICODE_DIR}" "${UNICODE_DIR}2"
+        fi
+        echo "ANDROID_NDK=$ANDROID_HOME/ndk/${{ matrix.ndk-version }}" >> $GITHUB_ENV
         echo "PATH=$PATH" >> $GITHUB_ENV
       shell: bash
 
@@ -158,32 +141,9 @@ jobs:
 
     - name: Build
       if: steps.cache-dist.outputs.cache-hit != 'true'
-      run: |
-        variants=(ndk27 ndk28c ndk29)
-        for variant in "${variants[@]}"; do
-          case "$variant" in
-            ndk27)
-              export ANDROID_NDK="$ANDROID_HOME/ndk/${NDK_VERSION_27}"
-              ;;
-            ndk28c)
-              export ANDROID_NDK="$ANDROID_HOME/ndk/${NDK_VERSION_28}"
-              ;;
-            ndk29)
-              export ANDROID_NDK="$ANDROID_HOME/ndk/${NDK_VERSION_29}"
-              ;;
-            *)
-              echo "Unknown variant $variant" >&2
-              exit 1
-          esac
-
-          if [[ ! -d "$ANDROID_NDK" ]]; then
-            echo "Android NDK not found at $ANDROID_NDK for variant $variant" >&2
-            exit 1
-          fi
-
-          export JSC_NDK_VARIANT="$variant"
-          yarn start
-        done
+      env:
+        JSC_NDK_VARIANT: ${{ matrix.variant }}
+      run: yarn start
       shell: bash
 
     - name: Show ccache stats
@@ -198,24 +158,17 @@ jobs:
       run: |
           rm -rf archive
           mkdir -p archive
-          shopt -s nullglob
-          found=0
-          for dir in dist-ndk*; do
-            if [[ -d "$dir" ]]; then
-              cp -R "$dir" archive/
-              found=1
-            fi
-          done
-          shopt -u nullglob
-          if [[ $found -eq 0 ]]; then
-            echo "No distribution directories were produced." >&2
+          if [[ -d "dist-${{ matrix.variant }}" ]]; then
+            cp -R "dist-${{ matrix.variant }}" archive/
+          else
+            echo "Distribution directory dist-${{ matrix.variant }} was not produced." >&2
             exit 1
           fi
       shell: bash
 
     - uses: actions/upload-artifact@v4
       with:
-        name: archive
+        name: archive-${{ matrix.variant }}
         path: archive
 
 
@@ -242,8 +195,9 @@ jobs:
 
     - uses: actions/download-artifact@v4
       with:
-        name: archive
+        pattern: archive-*
         path: archive
+        merge-multiple: true
 
     - name: Extract archive
       run: |
@@ -330,8 +284,9 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: archive
+          pattern: archive-*
           path: archive
+          merge-multiple: true
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
