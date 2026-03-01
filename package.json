@@ -42,7 +42,7 @@
         "disableLoopVectorization": true
       },
       {
-        "id": "ndk28c",
+        "id": "ndk28",
         "label": "Android NDK r28c",
         "npmPackage": "jsc-android",
         "pkgRevisionPrefixes": ["28.2."],
