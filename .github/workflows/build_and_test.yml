@@ -1,9 +1,6 @@
 name: Build jsc-android and test
 
-on:
-  push:
-    branches: [main]
-  pull_request:
+on: workflow_dispatch
 
 jobs:
   build:
