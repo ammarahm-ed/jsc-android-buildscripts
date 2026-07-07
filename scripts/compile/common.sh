@@ -115,6 +115,7 @@ COMMON_LDFLAGS=" \
 -Wl,--exclude-libs,libgcc.a \
 -Wl,--exclude-libs,libunwind.a \
 -Wl,--no-undefined \
+-Wl,-z,max-page-size=16384 \
 "
 
 COMMON_CFLAGS=" \
