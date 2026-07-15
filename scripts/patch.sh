@@ -71,6 +71,9 @@ JSC_PATCHSET=(
 
   # Ensure Android logging macros are available when Bun additions are enabled
   "jsc_android_assertions_android_log.patch"
+
+  # Add a public C API for on-disk program bytecode caching (JSBytecodeCache.h)
+  "jsc_android_bytecode_cache.patch"
 )
 
 ######################################################################################

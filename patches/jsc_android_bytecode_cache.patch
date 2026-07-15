@@ -1,0 +1,311 @@
+diff --git a/webkit/Source/JavaScriptCore/API/JSBytecodeCache.h b/webkit/Source/JavaScriptCore/API/JSBytecodeCache.h
+new file mode 100644
+--- /dev/null
++++ b/webkit/Source/JavaScriptCore/API/JSBytecodeCache.h
+@@ -0,0 +1,87 @@
++/*
++ * Copyright (C) 2026 Software Mansion. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#ifndef JSBytecodeCache_h
++#define JSBytecodeCache_h
++
++#include <JavaScriptCore/JSBase.h>
++#include <JavaScriptCore/JSValueRef.h>
++#include <stdbool.h>
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/*!
++ @function
++ @abstract Serialize a top-level program to a JSC bytecode cache on disk.
++ @discussion Parses and byte-compiles @p source (a classic, non-module program
++  identified by @p sourceURL) and writes the resulting bytecode cache blob to
++  @p outputFilePath, truncating any existing contents. The caller owns file
++  publication semantics: write to a temporary path and rename it into place, and
++  track staleness (e.g. via the source file's modification time) however it sees
++  fit. The blob is only meaningful to JSEvaluateProgramWithBytecodeCacheFile and
++  is validated there before use.
++ @param ctx The execution context (its VM is used for compilation).
++ @param source The program source. Must be identical to the source later passed
++  to JSEvaluateProgramWithBytecodeCacheFile for the cache to be accepted.
++ @param sourceURL The source URL reported in errors; may be NULL.
++ @param outputFilePath A NUL-terminated UTF-8 filesystem path to write to.
++ @param errorMessage On failure, if non-NULL, receives a retained JSStringRef
++  describing the failure (release it with JSStringRelease).
++ @result true if the cache was written, false otherwise.
++ */
++JS_EXPORT bool JSWriteBytecodeCacheForProgram(JSContextRef ctx, JSStringRef source, JSStringRef sourceURL, const char* outputFilePath, JSStringRef* errorMessage);
++
++/*!
++ @function
++ @abstract Evaluate a top-level program, reusing a previously written bytecode
++  cache when it is still valid.
++ @discussion Memory-maps the cache blob at @p cacheFilePath and, if it is valid
++  for this exact @p source, evaluates the program directly from the cached
++  bytecode, skipping parsing and byte-compilation. If the file is missing,
++  stale, or incompatible (e.g. produced by a different JSC build), nothing is
++  evaluated, @p cacheRejected is set to true and NULL is returned; the caller
++  should then run the source normally and refresh the cache. A genuine runtime
++  error during evaluation is reported via @p exception (and NULL is returned)
++  while leaving @p cacheRejected false.
++ @param ctx The execution context to evaluate in.
++ @param source The program source (must match the source the cache was made from).
++ @param sourceURL The source URL reported in errors and stack traces; may be NULL.
++ @param cacheFilePath A NUL-terminated UTF-8 path to a blob previously produced
++  by JSWriteBytecodeCacheForProgram.
++ @param thisObject The object to use as "this", or NULL for undefined.
++ @param cacheRejected If non-NULL, set to true when the cache could not be used
++  (miss/stale/incompatible) and false otherwise.
++ @param exception If non-NULL, receives an exception thrown while running.
++ @result The program's completion value, or NULL on a cache miss or an exception.
++ */
++JS_EXPORT JSValueRef JSEvaluateProgramWithBytecodeCacheFile(JSContextRef ctx, JSStringRef source, JSStringRef sourceURL, const char* cacheFilePath, JSValueRef thisObject, bool* cacheRejected, JSValueRef* exception);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* JSBytecodeCache_h */
+diff --git a/webkit/Source/JavaScriptCore/API/JSBytecodeCache.cpp b/webkit/Source/JavaScriptCore/API/JSBytecodeCache.cpp
+new file mode 100644
+--- /dev/null
++++ b/webkit/Source/JavaScriptCore/API/JSBytecodeCache.cpp
+@@ -0,0 +1,192 @@
++/*
++ * Copyright (C) 2026 Software Mansion. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "JSBytecodeCache.h"
++
++#include "APICast.h"
++#include "BytecodeCacheError.h"
++#include "CachedBytecode.h"
++#include "CachedTypes.h"
++#include "CodeCache.h"
++#include "Completion.h"
++#include "Exception.h"
++#include "JSCInlines.h"
++#include "JSGlobalObjectInlines.h"
++#include "OpaqueJSString.h"
++#include "SourceCode.h"
++#include "SourceCodeKey.h"
++#include "SourceOrigin.h"
++#include "SourceProvider.h"
++#include <wtf/FileHandle.h>
++#include <wtf/FileSystem.h>
++#include <wtf/MappedFileData.h>
++#include <wtf/NakedPtr.h>
++#include <wtf/URL.h>
++#include <wtf/text/MakeString.h>
++#include <wtf/text/WTFString.h>
++
++using namespace JSC;
++
++WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
++
++namespace {
++
++// A program SourceProvider that can optionally carry a bytecode cache. When it
++// does, JSC's CodeCache picks the cache up through cachedBytecode() and skips
++// parsing/byte-compilation for this source. When it does not (generation path),
++// it behaves like a plain string program provider.
++class BytecodeCacheSourceProvider final : public SourceProvider {
++public:
++    static Ref<BytecodeCacheSourceProvider> create(const SourceOrigin& sourceOrigin, String sourceURL, const String& source, RefPtr<CachedBytecode> cachedBytecode)
++    {
++        return adoptRef(*new BytecodeCacheSourceProvider(sourceOrigin, WTFMove(sourceURL), source, WTFMove(cachedBytecode)));
++    }
++
++    unsigned hash() const final { return m_source.get().hash(); }
++    StringView source() const final { return m_source.get(); }
++    RefPtr<CachedBytecode> cachedBytecode() const final { return m_cachedBytecode; }
++
++private:
++    BytecodeCacheSourceProvider(const SourceOrigin& sourceOrigin, String&& sourceURL, const String& source, RefPtr<CachedBytecode>&& cachedBytecode)
++        : SourceProvider(sourceOrigin, WTFMove(sourceURL), String(), SourceTaintedOrigin::Untainted, TextPosition(), SourceProviderSourceType::Program)
++        , m_source(source.isNull() ? *StringImpl::empty() : *source.impl())
++        , m_cachedBytecode(WTFMove(cachedBytecode))
++    {
++    }
++
++    const Ref<StringImpl> m_source;
++    RefPtr<CachedBytecode> m_cachedBytecode;
++};
++
++static SourceCode makeBytecodeCacheProgramSourceCode(JSStringRef sourceURLRef, const String& source, RefPtr<CachedBytecode> cachedBytecode)
++{
++    auto sourceURL = sourceURLRef ? URL({ }, sourceURLRef->string()) : URL();
++    Ref<BytecodeCacheSourceProvider> provider = BytecodeCacheSourceProvider::create(SourceOrigin { sourceURL }, sourceURL.string(), source, WTFMove(cachedBytecode));
++    return SourceCode(WTFMove(provider), 1, 1);
++}
++
++static void storeBytecodeCacheError(JSStringRef* errorMessage, const String& message)
++{
++    if (errorMessage)
++        *errorMessage = OpaqueJSString::tryCreate(message).leakRef();
++}
++
++} // anonymous namespace
++
++extern "C" {
++
++bool JSWriteBytecodeCacheForProgram(JSContextRef ctx, JSStringRef sourceRef, JSStringRef sourceURLRef, const char* outputFilePath, JSStringRef* errorMessage)
++{
++    if (errorMessage)
++        *errorMessage = nullptr;
++    if (!ctx || !sourceRef || !outputFilePath) {
++        storeBytecodeCacheError(errorMessage, "Invalid arguments to JSWriteBytecodeCacheForProgram"_s);
++        return false;
++    }
++
++    JSGlobalObject* globalObject = toJS(ctx);
++    VM& vm = globalObject->vm();
++    JSLockHolder locker(vm);
++
++    SourceCode sourceCode = makeBytecodeCacheProgramSourceCode(sourceURLRef, sourceRef->string(), nullptr);
++
++    auto handle = FileSystem::openFile(String::fromUTF8(outputFilePath), FileSystem::FileOpenMode::Truncate, FileSystem::FileAccessPermission::User);
++    if (!handle) {
++        storeBytecodeCacheError(errorMessage, "Could not open the bytecode cache file for writing"_s);
++        return false;
++    }
++
++    BytecodeCacheError cacheError;
++    RefPtr<CachedBytecode> cachedBytecode = generateProgramBytecode(vm, sourceCode, handle, cacheError);
++    if (cacheError.isValid() || !cachedBytecode || !cachedBytecode->size()) {
++        handle.truncate(0);
++        storeBytecodeCacheError(errorMessage, cacheError.isValid() ? makeString("Unable to generate bytecode cache: "_s, cacheError.message()) : "Bytecode generation produced no data"_s);
++        return false;
++    }
++
++    handle.flush();
++    return true;
++}
++
++JSValueRef JSEvaluateProgramWithBytecodeCacheFile(JSContextRef ctx, JSStringRef sourceRef, JSStringRef sourceURLRef, const char* cacheFilePath, JSValueRef thisObjectRef, bool* cacheRejected, JSValueRef* exception)
++{
++    if (cacheRejected)
++        *cacheRejected = false;
++    if (exception)
++        *exception = nullptr;
++
++    if (!ctx || !sourceRef || !cacheFilePath) {
++        if (cacheRejected)
++            *cacheRejected = true;
++        return nullptr;
++    }
++
++    JSGlobalObject* globalObject = toJS(ctx);
++    VM& vm = globalObject->vm();
++    JSLockHolder locker(vm);
++
++    auto handle = FileSystem::openFile(String::fromUTF8(cacheFilePath), FileSystem::FileOpenMode::Read);
++    if (!handle) {
++        if (cacheRejected)
++            *cacheRejected = true;
++        return nullptr;
++    }
++
++    auto mappedFile = handle.map(FileSystem::MappedFileMode::Private);
++    if (!mappedFile || !mappedFile->size()) {
++        if (cacheRejected)
++            *cacheRejected = true;
++        return nullptr;
++    }
++
++    Ref<CachedBytecode> cachedBytecode = CachedBytecode::create(WTFMove(*mappedFile));
++    SourceCode sourceCode = makeBytecodeCacheProgramSourceCode(sourceURLRef, sourceRef->string(), cachedBytecode.copyRef());
++
++    // Reject a stale or incompatible cache (different source or JSC cache
++    // version) without running anything, so the caller can fall back to source.
++    SourceCodeKey key = sourceCodeKeyForSerializedProgram(vm, sourceCode);
++    if (!isCachedBytecodeStillValid(vm, cachedBytecode.copyRef(), key, SourceCodeType::ProgramType)) {
++        if (cacheRejected)
++            *cacheRejected = true;
++        return nullptr;
++    }
++
++    NakedPtr<Exception> internalException;
++    JSValue thisValue = thisObjectRef ? toJS(globalObject, thisObjectRef) : jsUndefined();
++    JSValue result = evaluate(globalObject, sourceCode, thisValue, internalException);
++    if (internalException) {
++        if (exception)
++            *exception = toRef(globalObject, internalException->value());
++        return nullptr;
++    }
++
++    ASSERT(result);
++    return toRef(globalObject, result);
++}
++
++} // extern "C"
++
++WTF_ALLOW_UNSAFE_BUFFER_USAGE_END
+diff --git a/webkit/Source/JavaScriptCore/Sources.txt b/webkit/Source/JavaScriptCore/Sources.txt
+--- a/webkit/Source/JavaScriptCore/Sources.txt
++++ b/webkit/Source/JavaScriptCore/Sources.txt
+@@ -25,6 +25,7 @@
+ API/JSAPIGlobalObject.cpp
+ API/JSAPIValueWrapper.cpp
+ API/JSBase.cpp
++API/JSBytecodeCache.cpp
+ API/JSCTestRunnerUtils.cpp
+ API/JSCallbackConstructor.cpp
+ API/JSCallbackFunction.cpp
+diff --git a/webkit/Source/JavaScriptCore/CMakeLists.txt b/webkit/Source/JavaScriptCore/CMakeLists.txt
+--- a/webkit/Source/JavaScriptCore/CMakeLists.txt
++++ b/webkit/Source/JavaScriptCore/CMakeLists.txt
+@@ -542,6 +542,7 @@
+     API/JSObjectRefPrivate.h
+     API/JSRemoteInspector.h
+     API/JSRetainPtr.h
++    API/JSBytecodeCache.h
+     API/JSScriptRefPrivate.h
+     API/JSStringRefPrivate.h
+     API/JSValueInternal.h

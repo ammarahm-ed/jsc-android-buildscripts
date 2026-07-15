@@ -222,15 +222,23 @@ fi
 printf "\n\n\t\t===================== create stripped distributions =====================\n\n"
 export DISTDIR=${STRIPPED_DIST_DIR}
 copyHeaders ${DISTDIR}
-createAAR "jsc-android" ${DISTDIR} ${INSTALL_DIR_I18N_false} "false"
-createAAR "jsc-android" ${DISTDIR} ${INSTALL_DIR_I18N_true} "true"
+if [[ "${SKIP_NO_INTL}" != "1" ]]; then
+  createAAR "jsc-android" ${DISTDIR} ${INSTALL_DIR_I18N_false} "false"
+fi
+if [[ "${SKIP_INTL}" != "1" ]]; then
+  createAAR "jsc-android" ${DISTDIR} ${INSTALL_DIR_I18N_true} "true"
+fi
 createAAR "cppruntime" ${DISTDIR} ${INSTALL_CPPRUNTIME_DIR} "false"
 
 printf "\n\n\t\t===================== create unstripped distributions =====================\n\n"
 export DISTDIR=${UNSTRIPPED_DIST_DIR}
 copyHeaders ${DISTDIR}
-createAAR "jsc-android" ${DISTDIR} ${INSTALL_UNSTRIPPED_DIR_I18N_false} "false"
-createAAR "jsc-android" ${DISTDIR} ${INSTALL_UNSTRIPPED_DIR_I18N_true} "true"
+if [[ "${SKIP_NO_INTL}" != "1" ]]; then
+  createAAR "jsc-android" ${DISTDIR} ${INSTALL_UNSTRIPPED_DIR_I18N_false} "false"
+fi
+if [[ "${SKIP_INTL}" != "1" ]]; then
+  createAAR "jsc-android" ${DISTDIR} ${INSTALL_UNSTRIPPED_DIR_I18N_true} "true"
+fi
 createAAR "cppruntime" ${DISTDIR} ${INSTALL_CPPRUNTIME_DIR} "false"
 
 printf "\n\n\t\t===================== build smoke test assets =====================\n\n"

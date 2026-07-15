@@ -40,9 +40,30 @@ else
     BUILD_TYPE_FLAGS="-DDEBUG_FISSION=OFF"
 fi
 
+# JIT / optimization tiers.
+#
+# Baseline and DFG JIT work on every ABI we ship. The FTL (B3) optimizing tier
+# requires a 64-bit JSValue representation (JSVALUE64), so it is only enabled on
+# the 64-bit ABIs (arm64, x86_64). On the 32-bit ABIs we still get baseline +
+# DFG, which is a large win over the C_LOOP interpreter.
+#
+# WebAssembly is intentionally left OFF.
+#
+# Enabling ENABLE_JIT also flips on the LLInt ASM interpreter and, via
+# jsc_fix_concurrent_gc_issue.patch, ENABLE_CONCURRENT_JS (concurrent baseline/
+# DFG compilation + concurrent GC guards).
+ENABLE_FTL="OFF"
+case "$JSC_ARCH" in
+  arm64|x86_64)
+    ENABLE_FTL="ON"
+    ;;
+esac
+
 JSC_FEATURE_FLAGS=" \
-  -DENABLE_JIT=OFF \
-  -DENABLE_C_LOOP=ON \
+  -DENABLE_JIT=ON \
+  -DENABLE_C_LOOP=OFF \
+  -DENABLE_DFG_JIT=ON \
+  -DENABLE_FTL_JIT=${ENABLE_FTL} \
   -DENABLE_WEBASSEMBLY=OFF \
 "
 
@@ -59,8 +80,6 @@ $TARGETDIR/webkit/Tools/Scripts/build-webkit \
   -DANDROID_ABI=${JNI_ARCH} \
   -DANDROID_PLATFORM=${ANDROID_API} \
   -DANDROID_TARGET_SDK_VERSION=${ANDROID_TARGET_API:-${ANDROID_API}} \
-  -DENABLE_JIT=OFF \
-  -DENABLE_WEBASSEMBLY=OFF \
   -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH \
   -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH \
   -DICU_ROOT=${TARGETDIR}/icu/${CROSS_COMPILE_PLATFORM}-${FLAVOR}/prebuilts \
@@ -85,8 +104,6 @@ $TARGETDIR/webkit/Tools/Scripts/build-webkit \
   $CCACHE_CMAKE_ARGS \
   -DENABLE_API_TESTS=OFF \
   -DENABLE_SAMPLING_PROFILER=OFF \
-  -DENABLE_DFG_JIT=OFF \
-  -DENABLE_FTL_JIT=OFF \
   -DUSE_SYSTEM_MALLOC=OFF \
   -DJSC_VERSION=\"${JSC_VERSION}\" \
   $JSC_FEATURE_FLAGS \
