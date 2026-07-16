@@ -1,0 +1,16 @@
+# Linker version script restricting libjsc's exported (dynamic) symbols to the
+# JavaScriptCore public C API. Consumers (e.g. NativeScript's libNativeScript.so)
+# link only against the JS*/kJS* C API — verified by inspecting the compiled
+# consumer's undefined symbols: it imports 0 JSC C++ (JSC::...) / Inspector / WTF
+# symbols. Hiding the ~13k internal symbols shrinks the dynamic symbol tables and
+# lets --gc-sections dead-strip internal-only code.
+#
+# NOTE: if a consumer ever links a non-C-API (mangled JSC:: C++) symbol, add it
+# to the global list here or its link will fail with an undefined reference.
+{
+  global:
+    JS*;
+    kJS*;
+  local:
+    *;
+};

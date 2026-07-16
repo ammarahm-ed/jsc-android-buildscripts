@@ -7,7 +7,7 @@ diff --git a/webkit/Source/bmalloc/bmalloc/SystemHeap.cpp b/webkit/Source/bmallo
  {
 -    void* result = ::aligned_alloc(alignment, size);
 +    void* result = nullptr;
-+#if PAS_OS(ANDROID)
++#if defined(__ANDROID__)
 +    if (::posix_memalign(&result, alignment, size))
 +        result = nullptr;
 +#else

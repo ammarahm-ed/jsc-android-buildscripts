@@ -15,16 +15,23 @@ compile_arch() {
 }
 
 compile() {
+  # 32-bit ABIs: only when INCLUDE_32_BIT_ABIS=1. Override the list with
+  # JSC_ARCHS_32 (e.g. "arm") to build a single 32-bit ABI.
+  local archs32=""
   if [[ "${INCLUDE_32_BIT_ABIS:-0}" == "1" ]]; then
-    for arch in arm x86
-    do
-      export ANDROID_API=$ANDROID_API_FOR_ABI_32
-      export JSC_ARCH=$arch
-      compile_arch
-    done
+    archs32="${JSC_ARCHS_32-arm x86}"
   fi
+  for arch in $archs32
+  do
+    export ANDROID_API=$ANDROID_API_FOR_ABI_32
+    export JSC_ARCH=$arch
+    compile_arch
+  done
 
-  for arch in arm64 x86_64
+  # 64-bit ABIs. Override with JSC_ARCHS_64 (e.g. "arm64" for a single arch, or
+  # "" to skip all 64-bit ABIs). Uses ${VAR-default} so an explicit empty value
+  # means "none" while unset means the full default list.
+  for arch in ${JSC_ARCHS_64-arm64 x86_64}
   do
     export ANDROID_API=$ANDROID_API_FOR_ABI_64
     export JSC_ARCH=$arch

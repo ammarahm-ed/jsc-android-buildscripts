@@ -29,6 +29,20 @@ if ! [[ $ROOTDIR ]]; then ROOTDIR=`pwd`; fi
 source $ROOTDIR/scripts/toolchain.sh
 ARCH=$JSC_ARCH
 
+# 32-bit ABIs (armv7, x86): bundled simdutf/fast_float have forced
+# `#pragma clang loop vectorize(enable)` loops that the 32-bit targets cannot
+# vectorize. Under (thin/full) LTO that surfaces as a hard link-time error from
+# the LTO backend, which no -W flag can suppress. Disable LTO for 32-bit (it is
+# legacy/interpreter-only, so LTO matters least) so the failure degrades to a
+# non-fatal compile-time warning, and silence that warning explicitly.
+case "$JSC_ARCH" in
+  arm|x86)
+    JSC_TOOLCHAIN_LTO_FLAG=""
+    JSC_TOOLCHAIN_RELEASE_LDFLAGS=""
+    JSC_TOOLCHAIN_RELEASE_CFLAGS="$JSC_TOOLCHAIN_RELEASE_CFLAGS -Wno-pass-failed"
+    ;;
+esac
+
 if [[ -z "$TARGETDIR" ]]; then
   TARGETDIR=$ROOTDIR/build/target
 fi
@@ -129,6 +143,9 @@ COMMON_LDFLAGS=" \
 -Wl,--exclude-libs,libgcc.a \
 -Wl,--no-undefined \
 -Wl,-z,max-page-size=16384 \
+-Wl,-O2 \
+-Wl,--icf=safe \
+-Wl,--pack-dyn-relocs=android+relr \
 "
 
 if [[ "$BUILD_TYPE" = "Release" && -n "$JSC_TOOLCHAIN_RELEASE_LDFLAGS" ]]; then

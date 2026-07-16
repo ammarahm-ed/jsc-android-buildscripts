@@ -210,7 +210,7 @@ new file mode 100644
 +
 +    SourceCode sourceCode = makeBytecodeCacheProgramSourceCode(sourceURLRef, sourceRef->string(), nullptr);
 +
-+    auto handle = FileSystem::openFile(String::fromUTF8(outputFilePath), FileSystem::FileOpenMode::Truncate, FileSystem::FileAccessPermission::User);
++    auto handle = FileSystem::openFile(String::fromUTF8(outputFilePath), FileSystem::FileOpenMode::ReadWrite, FileSystem::FileAccessPermission::User);
 +    if (!handle) {
 +        storeBytecodeCacheError(errorMessage, "Could not open the bytecode cache file for writing"_s);
 +        return false;
@@ -294,7 +294,7 @@ diff --git a/webkit/Source/JavaScriptCore/Sources.txt b/webkit/Source/JavaScript
  API/JSAPIGlobalObject.cpp
  API/JSAPIValueWrapper.cpp
  API/JSBase.cpp
-+API/JSBytecodeCache.cpp
++API/JSBytecodeCache.cpp @no-unify
  API/JSCTestRunnerUtils.cpp
  API/JSCallbackConstructor.cpp
  API/JSCallbackFunction.cpp

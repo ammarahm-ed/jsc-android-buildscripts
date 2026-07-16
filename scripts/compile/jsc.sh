@@ -27,6 +27,13 @@ BASE_CXX_FLAGS="$COMMON_CXXFLAGS $BASE_C_FLAGS"
 BASE_CXX_FLAGS="$BASE_CXX_FLAGS -std=c++${JSC_TOOLCHAIN_CXX_STANDARD:-23}"
 BASE_LD_FLAGS="-latomic -lm -lc++_shared $JSC_LDFLAGS $PLATFORM_LDFLAGS"
 
+# Restrict libjsc's exported symbols to the JavaScriptCore public C API, hiding
+# ~13k internal C++ symbols (shrinks dynamic symbol tables + enables dead-strip).
+# Applied ONLY to the shared library link, not the JSC CLI/test executables
+# (bin/jsc, bin/testapi, ...), which reference those internal symbols directly.
+JSC_EXPORTS_MAP="$SCRIPT_DIR/jsc-api-exports.map"
+SHARED_LD_FLAGS="$BASE_LD_FLAGS -Wl,--version-script=$JSC_EXPORTS_MAP"
+
 export CFLAGS="$BASE_C_FLAGS"
 export CXXFLAGS="$BASE_CXX_FLAGS"
 export LDFLAGS="$BASE_LD_FLAGS"
@@ -42,30 +49,67 @@ fi
 
 # JIT / optimization tiers.
 #
-# Baseline and DFG JIT work on every ABI we ship. The FTL (B3) optimizing tier
-# requires a 64-bit JSValue representation (JSVALUE64), so it is only enabled on
-# the 64-bit ABIs (arm64, x86_64). On the 32-bit ABIs we still get baseline +
-# DFG, which is a large win over the C_LOOP interpreter.
+# Baseline + DFG JIT are enabled on every ABI. This is a large win over the
+# C_LOOP interpreter and covers the bulk of the optimizing-JIT speedup.
 #
-# WebAssembly is intentionally left OFF.
+# The FTL (B3) tier is intentionally left OFF. In this WebKit fork, B3's abstract
+# heap repository (b3/B3AbstractHeapRepository.{h,cpp}) references WebAssembly
+# types unconditionally (no ENABLE(WEBASSEMBLY) guards), so B3 — and therefore
+# FTL — cannot be compiled while WebAssembly is disabled. We keep WebAssembly OFF
+# (smaller binary, no WASM surface), so FTL stays off too. With both FTL and
+# WebAssembly off, ENABLE(B3_JIT) is off and the B3 sources are not built.
 #
 # Enabling ENABLE_JIT also flips on the LLInt ASM interpreter and, via
 # jsc_fix_concurrent_gc_issue.patch, ENABLE_CONCURRENT_JS (concurrent baseline/
 # DFG compilation + concurrent GC guards).
-ENABLE_FTL="OFF"
+# Arch-aware default: JIT (baseline + DFG) on the 64-bit ABIs; the 32-bit ABIs
+# run the portable C_LOOP interpreter with JIT off. armv7 does have a Thumb2 JIT
+# backend, but x86 (32-bit) has none in modern JSC, so for consistency both
+# 32-bit ABIs ship the interpreter. FTL/WebAssembly stay off everywhere.
 case "$JSC_ARCH" in
   arm64|x86_64)
-    ENABLE_FTL="ON"
-    ;;
-esac
-
-JSC_FEATURE_FLAGS=" \
+    JSC_FEATURE_FLAGS=" \
   -DENABLE_JIT=ON \
   -DENABLE_C_LOOP=OFF \
   -DENABLE_DFG_JIT=ON \
-  -DENABLE_FTL_JIT=${ENABLE_FTL} \
+  -DENABLE_FTL_JIT=OFF \
   -DENABLE_WEBASSEMBLY=OFF \
 "
+    ;;
+  *)
+    JSC_FEATURE_FLAGS=" \
+  -DENABLE_JIT=OFF \
+  -DENABLE_C_LOOP=ON \
+  -DENABLE_DFG_JIT=OFF \
+  -DENABLE_FTL_JIT=OFF \
+  -DENABLE_WEBASSEMBLY=OFF \
+"
+    ;;
+esac
+
+# ---- EXPERIMENT: interpreter-only override for ALL arches (no JIT compilation) ----
+# JSC_EXPERIMENT_NO_JIT=1   -> C_LOOP (portable C++ interpreter, smallest, slowest)
+# JSC_EXPERIMENT_ASM_LLINT=1-> asm LLInt (offlineasm interpreter: no JIT, but the
+#                              fast computed-goto/pinned-register dispatch, ~2-4x
+#                              C_LOOP). JIT=OFF + C_LOOP=OFF selects the ARM64
+#                              offlineasm backend. Bytecode cache works in both.
+if [[ "${JSC_EXPERIMENT_ASM_LLINT:-0}" == "1" ]]; then
+  JSC_FEATURE_FLAGS=" \
+  -DENABLE_JIT=OFF \
+  -DENABLE_C_LOOP=OFF \
+  -DENABLE_DFG_JIT=OFF \
+  -DENABLE_FTL_JIT=OFF \
+  -DENABLE_WEBASSEMBLY=OFF \
+"
+elif [[ "${JSC_EXPERIMENT_NO_JIT:-0}" == "1" ]]; then
+  JSC_FEATURE_FLAGS=" \
+  -DENABLE_JIT=OFF \
+  -DENABLE_C_LOOP=ON \
+  -DENABLE_DFG_JIT=OFF \
+  -DENABLE_FTL_JIT=OFF \
+  -DENABLE_WEBASSEMBLY=OFF \
+"
+fi
 
 $TARGETDIR/webkit/Tools/Scripts/build-webkit \
   --jsc-only \
@@ -75,6 +119,7 @@ $TARGETDIR/webkit/Tools/Scripts/build-webkit \
   --no-xslt \
   --no-netscape-plugin-api \
   --no-tools \
+  --makeargs="JavaScriptCore" \
   --cmakeargs="-DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK}/build/cmake/android.toolchain.cmake \
   -DUSE_LD_GOLD=OFF \
   -DANDROID_ABI=${JNI_ARCH} \
@@ -93,7 +138,7 @@ $TARGETDIR/webkit/Tools/Scripts/build-webkit \
   -DCMAKE_CXX_FLAGS_RELWITHDEBINFO=\"$BASE_CXX_FLAGS\" \
   -DCMAKE_C_FLAGS_DEBUG=\"$BASE_C_FLAGS $DEBUG_SYMBOL_LEVEL\" \
   -DCMAKE_CXX_FLAGS_DEBUG=\"$BASE_CXX_FLAGS $DEBUG_SYMBOL_LEVEL\" \
-  -DCMAKE_SHARED_LINKER_FLAGS=\"$BASE_LD_FLAGS\" \
+  -DCMAKE_SHARED_LINKER_FLAGS=\"$SHARED_LD_FLAGS\" \
   -DCMAKE_MODULE_LINKER_FLAGS=\"$BASE_LD_FLAGS\" \
   -DCMAKE_EXE_LINKER_FLAGS=\"$BASE_LD_FLAGS\" \
   -DUSE_BUN_JSC_ADDITIONS=ON \

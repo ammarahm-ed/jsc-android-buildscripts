@@ -170,7 +170,11 @@ if [[ -z "$JSC_CCACHE_BIN" && "${JSC_TOOLCHAIN_DISABLE_CCACHE:-0}" != "1" ]]; th
   fi
 fi
 
-if [[ "${JSC_TOOLCHAIN_VARIANT_ENABLE_THIN_LTO:-1}" == "1" ]]; then
+if [[ "${JSC_EXPERIMENT_FULL_LTO:-0}" == "1" ]]; then
+  # Monolithic whole-program LTO: better cross-TU inlining (helps the interpreter
+  # dispatch + runtime helpers) at the cost of a slow, memory-heavy link.
+  export JSC_TOOLCHAIN_LTO_FLAG="-flto"
+elif [[ "${JSC_TOOLCHAIN_VARIANT_ENABLE_THIN_LTO:-1}" == "1" ]]; then
   export JSC_TOOLCHAIN_LTO_FLAG="-flto=thin"
 else
   export JSC_TOOLCHAIN_LTO_FLAG=""

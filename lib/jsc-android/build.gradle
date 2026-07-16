@@ -7,6 +7,11 @@ def jniLibsDir = project.findProperty("jniLibsDir") ?: ""
 def headersDir = project.findProperty("headersDir") ?: "${distDir}/include"
 def version = project.findProperty("version") ?: "".replaceAll("\\s", "")
 def i18n = project.findProperty("i18n") ?: ""
+// ABIs to bundle in the AAR. Defaults to the full set; the build scripts pass a
+// narrower list (e.g. just "arm64-v8a") when only some arches were compiled, so
+// packaging doesn't fail looking for a libjsc.so that was never built.
+def abis = ((project.findProperty("abis") ?: "arm64-v8a,x86_64") as String)
+             .split(",").collect { it.trim() }.findAll { it }
 
 def signingKey = project.findProperty('signingKey')
 def signingPassword = project.findProperty('signingPassword')
@@ -29,7 +34,7 @@ android {
     versionName "1.0"
 
     ndk {
-      abiFilters 'arm64-v8a', 'x86_64'
+      abiFilters(*abis)
     }
 
     externalNativeBuild {

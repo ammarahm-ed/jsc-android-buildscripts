@@ -102,6 +102,14 @@ patchAndMakeICU() {
     LDFLAGS=""
   fi
 
+  # runConfigureICU needs the *host* platform profile: the Linux profile emits
+  # GNU linker flags (-Wl,-soname, .so) that Apple's linker rejects, so pick the
+  # MacOSX profile when building on a macOS host.
+  local ICU_HOST_PLATFORM="Linux"
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    ICU_HOST_PLATFORM="MacOSX"
+  fi
+
   ICU_FILTER_FILE="${TARGETDIR}/icu/filters/android.json"
   local CONFIG_ENV=(env "CFLAGS=$CFLAGS" "CXXFLAGS=$CXXFLAGS")
   if [[ -n "$LDFLAGS" ]]; then
@@ -121,7 +129,7 @@ patchAndMakeICU() {
     printf "Using ICU data filter: %s\n" "$ICU_FILTER_FILE"
     ICU_DATA_FILTER_FILE="$ICU_FILTER_FILE" \
       "${CONFIG_ENV[@]}" \
-      $TARGETDIR/icu/source/runConfigureICU Linux \
+      $TARGETDIR/icu/source/runConfigureICU "$ICU_HOST_PLATFORM" \
       --prefix=$PWD/prebuilts \
       --disable-tests \
       --disable-samples \
@@ -130,7 +138,7 @@ patchAndMakeICU() {
   else
     printf "ICU data filter not found at %s, building without data pruning\n" "$ICU_FILTER_FILE"
     "${CONFIG_ENV[@]}" \
-      $TARGETDIR/icu/source/runConfigureICU Linux \
+      $TARGETDIR/icu/source/runConfigureICU "$ICU_HOST_PLATFORM" \
       --prefix=$PWD/prebuilts \
       --disable-tests \
       --disable-samples \
@@ -196,9 +204,30 @@ createAAR() {
         --project-prop jniLibsDir="${jniLibsDir}" \
         --project-prop headersDir="${headersDir}" \
         --project-prop version="${npm_package_version}" \
-        --project-prop i18n="${i18n}"
+        --project-prop i18n="${i18n}" \
+        --project-prop abis="${JSC_AAR_ABIS}"
   )
 }
+
+# Android ABI names for the arches we actually compiled, so the AAR only bundles
+# libjsc.so files that exist. Mirrors the arch selection in compile/all.sh
+# (JSC_ARCHS_64 / INCLUDE_32_BIT_ABIS).
+arch_to_abi() {
+  case "$1" in
+    arm)    echo "armeabi-v7a" ;;
+    arm64)  echo "arm64-v8a" ;;
+    x86)    echo "x86" ;;
+    x86_64) echo "x86_64" ;;
+  esac
+}
+JSC_AAR_ABIS=""
+AAR_ARCHS32=""
+if [[ "${INCLUDE_32_BIT_ABIS:-0}" == "1" ]]; then
+  AAR_ARCHS32="${JSC_ARCHS_32-arm x86}"
+fi
+for a in $AAR_ARCHS32; do JSC_AAR_ABIS+="$(arch_to_abi "$a"),"; done
+for a in ${JSC_ARCHS_64-arm64 x86_64}; do JSC_AAR_ABIS+="$(arch_to_abi "$a"),"; done
+JSC_AAR_ABIS="${JSC_AAR_ABIS%,}"
 
 copyHeaders() {
   local distDir=$1
